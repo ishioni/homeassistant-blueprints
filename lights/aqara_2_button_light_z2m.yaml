@@ -1,0 +1,182 @@
+blueprint:
+  domain: automation
+  name: Aqara 2 button light switch
+  homeassistant:
+    min_version: 2025.4.0
+  description: 'Control 2 color-controllable white (CCW) lights with an Aqara 2-Gang Wireless Remote Switch. Supports single, double, and long presses to toggle, dim, or adjust the light.
+
+Note: In Zigbee2MQTT, enable event entities under Settings -> Home Assistant integration.'
+
+  input:
+    lights:
+      name: Lights
+      icon: mdi:lightbulb
+      description: Lights
+      input:
+        target_light_1:
+          name: Left light
+          description: Light to control with the left key
+          selector:
+            entity:
+              filter:
+                - integration: mqtt
+                  domain: light
+        target_light_2:
+          name: Right light
+          description: Light to control with the right key
+          selector:
+            entity:
+              filter:
+                - integration: mqtt
+                  domain: light
+    source_button:
+      name: Aqara button
+      description: 2-gang Aqara button
+      selector:
+        entity:
+          filter:
+            - integration: mqtt
+              domain: event
+    brightness_long:
+      name: Long click brightness
+      description: Percent brightness to set when long clicking
+      default: 20
+      selector:
+        number:
+          min: 1
+          max: 100
+          step: 10
+          unit_of_measurement: "%"
+          mode: slider
+    brightness_double:
+      name: Double click brightness
+      description: Percent brightness to set when double clicking
+      default: 100
+      selector:
+        number:
+          min: 1
+          max: 100
+          step: 1
+          unit_of_measurement: "%"
+          mode: slider
+    temperature_long:
+      name: Long click color
+      description: White color to set when long clicking
+      default: 2700
+      selector:
+        color_temp:
+          min: 2000
+          max: 6500
+          unit: kelvin
+    temperature_double:
+      name: Double click color
+      description: White color to set when double clicking
+      default: 4000
+      selector:
+        color_temp:
+          min: 2000
+          max: 6500
+          unit: kelvin
+
+trigger:
+  - platform: state
+    entity_id: !input source_button
+
+action:
+  - choose:
+      - conditions:
+          - condition: template
+            value_template: "{{ trigger.to_state.attributes.event_type == 'single_left' }}"
+        sequence:
+          - service: light.toggle
+            target:
+              entity_id: !input target_light_1
+      - conditions:
+          - condition: template
+            value_template: "{{ trigger.to_state.attributes.event_type == 'single_right' }}"
+        sequence:
+          - service: light.toggle
+            target:
+              entity_id: !input target_light_2
+      - conditions:
+          - condition: template
+            value_template: "{{ trigger.to_state.attributes.event_type == 'single_both' }}"
+        sequence:
+          - service: light.toggle
+            target:
+              entity_id: !input target_light_1
+          - service: light.toggle
+            target:
+              entity_id: !input target_light_2
+      - conditions:
+          - condition: template
+            value_template: "{{ trigger.to_state.attributes.event_type == 'double_left' }}"
+        sequence:
+          - service: light.turn_on
+            target:
+              entity_id: !input target_light_1
+            data:
+              brightness_pct: !input brightness_double
+              color_temp_kelvin: !input temperature_double
+      - conditions:
+          - condition: template
+            value_template: "{{ trigger.to_state.attributes.event_type == 'double_right' }}"
+        sequence:
+          - service: light.turn_on
+            target:
+              entity_id: !input target_light_2
+            data:
+              brightness_pct: !input brightness_double
+              color_temp_kelvin: !input temperature_double
+      - conditions:
+          - condition: template
+            value_template: "{{ trigger.to_state.attributes.event_type == 'double_both' }}"
+        sequence:
+          - service: light.turn_on
+            target:
+              entity_id: !input target_light_1
+            data:
+              brightness_pct: !input brightness_double
+              color_temp_kelvin: !input temperature_double
+          - service: light.turn_on
+            target:
+              entity_id: !input target_light_2
+            data:
+              brightness_pct: !input brightness_double
+              color_temp_kelvin: !input temperature_double
+      - conditions:
+          - condition: template
+            value_template: "{{ trigger.to_state.attributes.event_type == 'hold_left' }}"
+        sequence:
+          - service: light.turn_on
+            target:
+              entity_id: !input target_light_1
+            data:
+              brightness_pct: !input brightness_long
+              color_temp_kelvin: !input temperature_long
+      - conditions:
+          - condition: template
+            value_template: "{{ trigger.to_state.attributes.event_type == 'hold_right' }}"
+        sequence:
+          - service: light.turn_on
+            target:
+              entity_id: !input target_light_2
+            data:
+              brightness_pct: !input brightness_long
+              color_temp_kelvin: !input temperature_long
+      - conditions:
+          - condition: template
+            value_template: "{{ trigger.to_state.attributes.event_type == 'hold_both' }}"
+        sequence:
+          - service: light.turn_on
+            target:
+              entity_id: !input target_light_1
+            data:
+              brightness_pct: !input brightness_long
+              color_temp_kelvin: !input temperature_long
+          - service: light.turn_on
+            target:
+              entity_id: !input target_light_2
+            data:
+              brightness_pct: !input brightness_long
+              color_temp_kelvin: !input temperature_long

@@ -1,0 +1,100 @@
+blueprint:
+  domain: automation
+  name: Aqara 1 button light switch
+  homeassistant:
+    min_version: 2025.4.0
+  description: 'Control a color-controllable white (CCW) light with an Aqara 1-Gang Wireless Remote Switch. Supports single, double, and long presses to toggle, dim, or adjust the light.
+
+Note: In Zigbee2MQTT, enable event entities under Settings -> Home Assistant integration.'
+
+  input:
+    target_light:
+      name: Light
+      description: Light to control
+      selector:
+        entity:
+          filter:
+            - integration: mqtt
+              domain: light
+    source_button:
+      name: Aqara button
+      description: 1-gang Aqara button
+      selector:
+        entity:
+          filter:
+            - integration: mqtt
+              domain: event
+    brightness_long:
+      name: Long click brightness
+      description: Percent brightness to set when long clicking
+      default: 20
+      selector:
+        number:
+          min: 1
+          max: 100
+          step: 10
+          unit_of_measurement: "%"
+          mode: slider
+    brightness_double:
+      name: Double click brightness
+      description: Percent brightness to set when double clicking
+      default: 100
+      selector:
+        number:
+          min: 1
+          max: 100
+          step: 1
+          unit_of_measurement: "%"
+          mode: slider
+    temperature_long:
+      name: Long click color
+      description: White color to set when long clicking
+      default: 2700
+      selector:
+        color_temp:
+          min: 2000
+          max: 6500
+          unit: kelvin
+    temperature_double:
+      name: Double click color
+      description: White color to set when double clicking
+      default: 4000
+      selector:
+        color_temp:
+          min: 2000
+          max: 6500
+          unit: kelvin
+
+trigger:
+  - platform: state
+    entity_id: !input source_button
+
+action:
+  - choose:
+      - conditions:
+          - condition: template
+            value_template: "{{ trigger.to_state.attributes.event_type == 'single' }}"
+        sequence:
+          - service: light.toggle
+            target:
+              entity_id: !input target_light
+      - conditions:
+          - condition: template
+            value_template: "{{ trigger.to_state.attributes.event_type == 'double' }}"
+        sequence:
+          - service: light.turn_on
+            target:
+              entity_id: !input target_light
+            data:
+              brightness_pct: !input brightness_double
+              color_temp_kelvin: !input temperature_double
+      - conditions:
+          - condition: template
+            value_template: "{{ trigger.to_state.attributes.event_type == 'hold' }}"
+        sequence:
+          - service: light.turn_on
+            target:
+              entity_id: !input target_light
+            data:
+              brightness_pct: !input brightness_long
+              color_temp_kelvin: !input temperature_long
