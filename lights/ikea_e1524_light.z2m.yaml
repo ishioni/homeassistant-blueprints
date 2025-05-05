@@ -38,9 +38,11 @@ blueprint:
       default: 450
       selector:
         number:
-          min: 50
+          min: 500
           max: 2000
-          unit: kelvin
+          step: 150
+          unit_of_measurement: K
+          mode: slider
 
 variables:
   # light_entity: !input target_light
