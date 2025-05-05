@@ -47,7 +47,7 @@ blueprint:
 variables:
   # light_entity: !input target_light
   brightness_step: !input brightness_step
-  brightness_starting: !input brightness_starting
+  # brightness_starting: !input brightness_starting
   # kelvin_cur: "{{ state_attr(light_entity, 'color_temp_kelvin') }}"
 
 
