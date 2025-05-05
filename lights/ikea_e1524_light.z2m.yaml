@@ -3,7 +3,7 @@ blueprint:
   name: Ikea E1524/E1810 light remote
   homeassistant:
     min_version: 2025.4.0
-  description: 'Control a color-controllable white (CCW) light with an Ikea puck remote. Toggle, dim, or adjust the light color.'
+  description: "Control a color-controllable white (CCW) light with an Ikea puck remote. Toggle, dim, or adjust the light color."
   input:
     target_light:
       name: Light
@@ -28,14 +28,14 @@ blueprint:
       selector:
         number:
           min: 1
-          max: 100
-          step: 10
+          max: 20
+          step: 1
           unit_of_measurement: "%"
           mode: slider
     temperature_step:
       name: Temperature step
       description: White temperature percent change on each click
-      default: 450
+      default: 750
       selector:
         number:
           min: 500
@@ -50,10 +50,11 @@ variables:
   # brightness_starting: !input brightness_starting
   # kelvin_cur: "{{ state_attr(light_entity, 'color_temp_kelvin') }}"
 
-
 triggers:
   - platform: state
     entity_id: !input source_remote
+
+action:
   - choose:
       - conditions:
           - condition: template
@@ -70,7 +71,7 @@ triggers:
             target:
               entity_id: !input target_light
             data:
-              brightness_pct: "{{ brightness_step }}"
+              brightness_step_pct: "{{ brightness_step }}"
       - conditions:
           - condition: template
             value_template: "{{ trigger.to_state.attributes.event_type == 'brightness_down_click' }}"
@@ -79,7 +80,25 @@ triggers:
             target:
               entity_id: !input target_light
             data:
-              brightness_pct: "{{ -brightness_step }}"
+              brightness_step_pct: "{{ -brightness_step }}"
+      - conditions:
+          - condition: template
+            value_template: "{{ trigger.to_state.attributes.event_type == 'brightness_up_hold' }}"
+        sequence:
+          - service: light.turn_on
+            target:
+              entity_id: !input target_light
+            data:
+              brightness_pct: 100
+      - conditions:
+          - condition: template
+            value_template: "{{ trigger.to_state.attributes.event_type == 'brightness_down_hold' }}"
+        sequence:
+          - service: light.turn_on
+            target:
+              entity_id: !input target_light
+            data:
+              brightness_pct: 10
       # - conditions:
       #     - condition: template
       #       value_template: "{{ trigger.to_state.attributes.event_type == 'arrow_left_click' }}"
