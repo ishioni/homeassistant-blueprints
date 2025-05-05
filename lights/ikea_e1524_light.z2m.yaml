@@ -53,7 +53,7 @@ variables:
 
 triggers:
   - platform: state
-    entity_id: !input source_button
+    entity_id: !input source_remote
   - choose:
       - conditions:
           - condition: template
