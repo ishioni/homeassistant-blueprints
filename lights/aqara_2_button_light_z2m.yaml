@@ -81,6 +81,8 @@ Note: In Zigbee2MQTT, enable event entities under Settings -> Home Assistant int
 trigger:
   - platform: state
     entity_id: !input source_button
+    not_from:
+      - "unavailable"
 
 action:
   - choose:
