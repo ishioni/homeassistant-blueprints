@@ -55,6 +55,8 @@ triggers:
     entity_id: !input source_remote
     not_from:
       - "unavailable"
+    not_to:
+      - "unavailable"
 
 action:
   - choose:

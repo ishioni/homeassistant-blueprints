@@ -70,6 +70,8 @@ trigger:
     entity_id: !input source_button
     not_from:
       - "unavailable"
+    not_to:
+      - "unavailable"
 
 action:
   - choose:
