@@ -1,11 +1,13 @@
 blueprint:
   domain: automation
   name: Aqara 1 button light switch
+  source_url: https://github.com/ishioni/homeassistant-blueprints/blob/master/lights/aqara_1_button_light_z2m.yaml
   homeassistant:
     min_version: 2025.4.0
-  description: 'Control a color-controllable white (CCW) light with an Aqara 1-Gang Wireless Remote Switch. Supports single, double, and long presses to toggle, dim, or adjust the light.
+  description: >
+    'Control a color-controllable white (CCW) light with an Aqara 1-Gang Wireless Remote Switch. Supports single, double, and long presses to toggle, dim, or adjust the light.
 
-Note: In Zigbee2MQTT, enable event entities under Settings -> Home Assistant integration.'
+    Note: In Zigbee2MQTT, enable event entities under Settings -> Home Assistant integration.'
 
   input:
     target_light:

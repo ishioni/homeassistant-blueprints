@@ -1,9 +1,11 @@
 blueprint:
   domain: automation
   name: Ikea E1524/E1810 light remote
+  source_url: https://github.com/ishioni/homeassistant-blueprints/blob/master/lights/ikea_e1524_light.z2m.yaml
   homeassistant:
     min_version: 2025.4.0
-  description: "Control a color-controllable white (CCW) light with an Ikea puck remote. Toggle, dim, or adjust the light color."
+  description: >
+    "Control a color-controllable white (CCW) light with an Ikea puck remote. Toggle, dim, or adjust the light color."
   input:
     target_light:
       name: Light
