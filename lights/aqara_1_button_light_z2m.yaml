@@ -20,6 +20,8 @@ blueprint:
               domain: light
             - integration: matter
               domain: light
+            - integration: group
+              domain: light
     source_button:
       name: Aqara button
       description: 1-gang Aqara button
