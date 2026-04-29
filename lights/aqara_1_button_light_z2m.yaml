@@ -18,6 +18,8 @@ blueprint:
           filter:
             - integration: mqtt
               domain: light
+            - integration: matter
+              domain: light
     source_button:
       name: Aqara button
       description: 1-gang Aqara button
