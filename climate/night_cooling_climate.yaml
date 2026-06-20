@@ -1,0 +1,260 @@
+blueprint:
+  domain: automation
+  name: Night cooling climate control
+  source_url: https://github.com/ishioni/homeassistant-blueprints/blob/master/climate/night_cooling_climate.yaml
+  homeassistant:
+    min_version: 2025.4.0
+  description: >
+    Run a climate entity overnight based on a room temperature sensor.
+
+    The automation turns the AC on by setting a chosen HVAC mode when the room
+    temperature rises above the high threshold during the active night window,
+    and turns it off when the room temperature falls below the low threshold or
+    when the end time is reached.
+
+    Inputs let you choose the climate entity, temperature sensor, high/low
+    thresholds, target temperature, start and end times, and the HVAC mode to
+    use when cooling is needed. You can also optionally require a door or
+    window sensor to stay closed while the automation is allowed to run.
+  input:
+    devices_section:
+      name: Devices
+      icon: mdi:air-conditioner
+      input:
+        target_climate:
+          name: Climate entity
+          description: The AC or climate unit to control
+          selector:
+            entity:
+              domain: climate
+
+        temperature_sensor:
+          name: Temperature sensor
+          description: Sensor used to decide when to turn the climate unit on or off
+          selector:
+            entity:
+              filter:
+                - domain: sensor
+                  device_class: temperature
+
+        blocker_binary_sensor:
+          name: Optional door/window sensor
+          description: >
+            Optional door/window sensor. If selected, cooling only runs while
+            this sensor is off (for example, window closed).
+          default: ""
+          selector:
+            entity:
+              filter:
+                - domain: binary_sensor
+                  device_class: door
+                - domain: binary_sensor
+                  device_class: window
+
+    climate_section:
+      name: Climate settings
+      icon: mdi:thermometer
+      input:
+        hvac_mode_on:
+          name: HVAC mode when active
+          description: Mode to set when the temperature is above the high threshold
+          default: cool
+          selector:
+            select:
+              options:
+                - cool
+                - dry
+                - fan_only
+                - heat
+                - heat_cool
+
+        target_temperature:
+          name: AC target temperature
+          description: Temperature to set on the climate unit when it turns on
+          default: 22
+          selector:
+            number:
+              min: 18
+              max: 28
+              step: 0.5
+              unit_of_measurement: "°C"
+              mode: slider
+
+    thresholds_section:
+      name: Temperature thresholds
+      icon: mdi:home-thermometer-outline
+      input:
+        high_temperature:
+          name: High temperature
+          description: Turn the climate unit on when temperature rises above this value
+          default: 24
+          selector:
+            number:
+              min: 18
+              max: 28
+              step: 0.5
+              unit_of_measurement: "°C"
+              mode: slider
+
+        low_temperature:
+          name: Low temperature
+          description: Turn the climate unit off when temperature falls below this value
+          default: 22
+          selector:
+            number:
+              min: 18
+              max: 28
+              step: 0.5
+              unit_of_measurement: "°C"
+              mode: slider
+
+        high_for_minutes:
+          name: Minutes above high temperature before turning on
+          description: Helps avoid short spikes triggering the AC
+          default: 3
+          selector:
+            number:
+              min: 0
+              max: 60
+              step: 1
+              unit_of_measurement: min
+              mode: box
+
+        low_for_minutes:
+          name: Minutes below low temperature before turning off
+          description: Helps avoid rapid cycling when the temperature drops
+          default: 0
+          selector:
+            number:
+              min: 0
+              max: 60
+              step: 1
+              unit_of_measurement: min
+              mode: box
+
+    schedule_section:
+      name: Schedule
+      icon: mdi:clock-outline
+      input:
+        start_time:
+          name: Start time
+          description: Earliest time the automation is allowed to turn the climate unit on
+          default: "20:00:00"
+          selector:
+            time: {}
+
+        end_time:
+          name: End time
+          description: Time to stop cooling and turn the climate unit off
+          default: "08:00:00"
+          selector:
+            time: {}
+
+variables:
+  blocker_binary_sensor: !input blocker_binary_sensor
+
+triggers:
+  - trigger: numeric_state
+    entity_id: !input temperature_sensor
+    above: !input high_temperature
+    for:
+      minutes: !input high_for_minutes
+    id: temp_high
+
+  - trigger: numeric_state
+    entity_id: !input temperature_sensor
+    below: !input low_temperature
+    for:
+      minutes: !input low_for_minutes
+    id: temp_low
+
+  - trigger: time
+    at: !input start_time
+    id: time_start
+
+  - trigger: time
+    at: !input end_time
+    id: time_end
+
+actions:
+  - choose:
+      - alias: Turn on when temperature is high during the active night window
+        conditions:
+          - condition: trigger
+            id:
+              - temp_high
+          - condition: or
+            conditions:
+              - condition: time
+                after: !input start_time
+              - condition: time
+                before: !input end_time
+          - condition: template
+            value_template: >-
+              {{ blocker_binary_sensor == '' or is_state(blocker_binary_sensor, 'off') }}
+        sequence:
+          - action: climate.set_hvac_mode
+            target:
+              entity_id: !input target_climate
+            data:
+              hvac_mode: !input hvac_mode_on
+          - action: climate.set_temperature
+            target:
+              entity_id: !input target_climate
+            data:
+              temperature: !input target_temperature
+
+      - alias: Turn off when temperature is low during the active night window
+        conditions:
+          - condition: trigger
+            id:
+              - temp_low
+          - condition: or
+            conditions:
+              - condition: time
+                after: !input start_time
+              - condition: time
+                before: !input end_time
+        sequence:
+          - action: climate.set_hvac_mode
+            target:
+              entity_id: !input target_climate
+            data:
+              hvac_mode: "off"
+
+      - alias: At start time, turn on if temperature is already high
+        conditions:
+          - condition: trigger
+            id:
+              - time_start
+          - condition: numeric_state
+            entity_id: !input temperature_sensor
+            above: !input high_temperature
+          - condition: template
+            value_template: >-
+              {{ blocker_binary_sensor == '' or is_state(blocker_binary_sensor, 'off') }}
+        sequence:
+          - action: climate.set_hvac_mode
+            target:
+              entity_id: !input target_climate
+            data:
+              hvac_mode: !input hvac_mode_on
+          - action: climate.set_temperature
+            target:
+              entity_id: !input target_climate
+            data:
+              temperature: !input target_temperature
+
+      - alias: At end time, always turn the climate unit off
+        conditions:
+          - condition: trigger
+            id:
+              - time_end
+        sequence:
+          - action: climate.set_hvac_mode
+            target:
+              entity_id: !input target_climate
+            data:
+              hvac_mode: "off"
+
+mode: single
