@@ -198,6 +198,8 @@ actions:
               entity_id: !input target_climate
             data:
               hvac_mode: !input hvac_mode_on
+          - delay:
+              seconds: 2
           - action: climate.set_temperature
             target:
               entity_id: !input target_climate
@@ -239,6 +241,8 @@ actions:
               entity_id: !input target_climate
             data:
               hvac_mode: !input hvac_mode_on
+          - delay:
+              seconds: 2
           - action: climate.set_temperature
             target:
               entity_id: !input target_climate
