@@ -1,0 +1,411 @@
+blueprint:
+  domain: automation
+  name: Better night cooling
+  author: ishioni
+  source_url: https://github.com/ishioni/homeassistant-blueprints/blob/master/climate/better_night_cooling.yaml
+  homeassistant:
+    min_version: 2024.10.0
+  description: >
+    Keep an AC in cool mode through an overnight schedule and let its own
+    controller regulate continuously. A separate room sensor is used only for
+    broad cold and hot safety guardrails, not as the AC's control sensor.
+  input:
+    devices_section:
+      name: Devices
+      icon: mdi:air-conditioner
+      input:
+        target_climate:
+          name: Climate entity
+          description: AC or climate unit to control.
+          selector:
+            entity:
+              domain: climate
+
+        temperature_sensor:
+          name: Room temperature sensor
+          description: Sensor near the occupied area, used for safety guardrails.
+          selector:
+            entity:
+              filter:
+                - domain: sensor
+                  device_class: temperature
+
+        blocker_binary_sensor:
+          name: Optional door/window sensor
+          description: Cooling is stopped while this sensor is on.
+          default: ""
+          selector:
+            entity:
+              filter:
+                - domain: binary_sensor
+                  device_class: door
+                - domain: binary_sensor
+                  device_class: window
+
+    climate_section:
+      name: Climate settings
+      icon: mdi:thermometer
+      input:
+        target_temperature:
+          name: Normal AC target temperature
+          description: >
+            The AC's own setpoint. This is not necessarily the same as the
+            room sensor temperature; calibrate it separately for each room.
+          default: 24
+          selector:
+            number:
+              min: 18
+              max: 28
+              step: 0.5
+              unit_of_measurement: °C
+              mode: slider
+
+        fan_mode:
+          name: Normal fan mode
+          description: Use a quiet fixed fan speed where supported by the unit.
+          default: low
+          selector:
+            select:
+              options:
+                - silent
+                - low
+                - medium
+                - high
+                - full
+                - auto
+
+    guardrails_section:
+      name: Safety guardrails
+      icon: mdi:shield-thermometer
+      input:
+        cold_cutoff_temperature:
+          name: Cold cutoff temperature
+          description: Stop the AC when the room sensor stays below this value.
+          default: 22
+          selector:
+            number:
+              min: 16
+              max: 24
+              step: 0.5
+              unit_of_measurement: °C
+              mode: slider
+
+        cold_cutoff_minutes:
+          name: Cold cutoff duration
+          description: Short duration to limit cold overshoot.
+          default: 5
+          selector:
+            number:
+              min: 1
+              max: 60
+              step: 1
+              unit_of_measurement: min
+              mode: box
+
+        cold_recovery_temperature:
+          name: Cold recovery temperature
+          description: Resume normal cooling after a cold-cutoff shutdown.
+          default: 23.5
+          selector:
+            number:
+              min: 18
+              max: 28
+              step: 0.5
+              unit_of_measurement: °C
+              mode: slider
+
+        cold_recovery_minutes:
+          name: Cold recovery duration
+          default: 10
+          selector:
+            number:
+              min: 1
+              max: 60
+              step: 1
+              unit_of_measurement: min
+              mode: box
+
+        hot_guardrail_temperature:
+          name: Hot guardrail temperature
+          description: Temporarily use the emergency target above this value.
+          default: 24.5
+          selector:
+            number:
+              min: 20
+              max: 32
+              step: 0.5
+              unit_of_measurement: °C
+              mode: slider
+
+        hot_guardrail_minutes:
+          name: Hot guardrail duration
+          default: 10
+          selector:
+            number:
+              min: 1
+              max: 60
+              step: 1
+              unit_of_measurement: min
+              mode: box
+
+        hot_recovery_temperature:
+          name: Hot recovery temperature
+          description: Restore the normal AC target below this value.
+          default: 24
+          selector:
+            number:
+              min: 18
+              max: 30
+              step: 0.5
+              unit_of_measurement: °C
+              mode: slider
+
+        emergency_target_temperature:
+          name: Emergency AC target
+          description: More aggressive AC target used only for the hot guardrail.
+          default: 22
+          selector:
+            number:
+              min: 16
+              max: 26
+              step: 0.5
+              unit_of_measurement: °C
+              mode: slider
+
+    schedule_section:
+      name: Schedule
+      icon: mdi:clock-outline
+      input:
+        start_time:
+          name: Start time
+          default: "20:30:00"
+          selector:
+            time: {}
+
+        end_time:
+          name: End time
+          default: "08:00:00"
+          selector:
+            time: {}
+
+trigger_variables:
+  blocker_binary_sensor_trigger: !input blocker_binary_sensor
+
+variables:
+  blocker_binary_sensor: !input blocker_binary_sensor
+
+triggers:
+  - trigger: time
+    at: !input start_time
+    id: time_start
+
+  - trigger: time
+    at: !input end_time
+    id: time_end
+
+  - trigger: numeric_state
+    entity_id: !input temperature_sensor
+    below: !input cold_cutoff_temperature
+    for:
+      minutes: !input cold_cutoff_minutes
+    id: too_cold
+
+  - trigger: numeric_state
+    entity_id: !input temperature_sensor
+    above: !input cold_recovery_temperature
+    for:
+      minutes: !input cold_recovery_minutes
+    id: cold_recovery
+
+  - trigger: numeric_state
+    entity_id: !input temperature_sensor
+    above: !input hot_guardrail_temperature
+    for:
+      minutes: !input hot_guardrail_minutes
+    id: too_hot
+
+  - trigger: numeric_state
+    entity_id: !input temperature_sensor
+    below: !input hot_recovery_temperature
+    for:
+      minutes: !input hot_guardrail_minutes
+    id: hot_recovery
+
+  - trigger: template
+    value_template: >-
+      {{ blocker_binary_sensor_trigger != '' and is_state(blocker_binary_sensor_trigger, 'on') }}
+    id: window_open
+
+  - trigger: template
+    value_template: >-
+      {{ blocker_binary_sensor_trigger != '' and is_state(blocker_binary_sensor_trigger, 'off') }}
+    id: window_closed
+
+  - trigger: state
+    entity_id: !input temperature_sensor
+    to: "unavailable"
+    id: sensor_unavailable
+
+  - trigger: state
+    entity_id: !input temperature_sensor
+    to: "unknown"
+    id: sensor_unknown
+
+actions:
+  - choose:
+      - alias: Always stop at the end of the night
+        conditions:
+          - condition: trigger
+            id: time_end
+        sequence:
+          - action: climate.set_hvac_mode
+            target:
+              entity_id: !input target_climate
+            data:
+              hvac_mode: "off"
+
+      - alias: Stop for a cold room, invalid sensor, or open window
+        conditions:
+          - condition: trigger
+            id:
+              - too_cold
+              - sensor_unavailable
+              - sensor_unknown
+              - window_open
+          - condition: or
+            conditions:
+              - condition: time
+                after: !input start_time
+              - condition: time
+                before: !input end_time
+        sequence:
+          - action: climate.set_hvac_mode
+            target:
+              entity_id: !input target_climate
+            data:
+              hvac_mode: "off"
+
+      - alias: Start normal cooling at the beginning of the night
+        conditions:
+          - condition: trigger
+            id: time_start
+          - condition: numeric_state
+            entity_id: !input temperature_sensor
+            above: !input cold_cutoff_temperature
+          - condition: template
+            value_template: >-
+              {{ blocker_binary_sensor == '' or is_state(blocker_binary_sensor, 'off') }}
+        sequence:
+          - action: climate.set_hvac_mode
+            target:
+              entity_id: !input target_climate
+            data:
+              hvac_mode: cool
+          - action: climate.set_temperature
+            target:
+              entity_id: !input target_climate
+            data:
+              temperature: !input target_temperature
+          - action: climate.set_fan_mode
+            target:
+              entity_id: !input target_climate
+            data:
+              fan_mode: !input fan_mode
+
+      - alias: Resume normal cooling after a cold guardrail shutdown
+        conditions:
+          - condition: trigger
+            id:
+              - cold_recovery
+              - window_closed
+          - condition: or
+            conditions:
+              - condition: time
+                after: !input start_time
+              - condition: time
+                before: !input end_time
+          - condition: numeric_state
+            entity_id: !input temperature_sensor
+            above: !input cold_recovery_temperature
+          - condition: state
+            entity_id: !input target_climate
+            state: "off"
+          - condition: template
+            value_template: >-
+              {{ blocker_binary_sensor == '' or is_state(blocker_binary_sensor, 'off') }}
+        sequence:
+          - action: climate.set_hvac_mode
+            target:
+              entity_id: !input target_climate
+            data:
+              hvac_mode: cool
+          - action: climate.set_temperature
+            target:
+              entity_id: !input target_climate
+            data:
+              temperature: !input target_temperature
+          - action: climate.set_fan_mode
+            target:
+              entity_id: !input target_climate
+            data:
+              fan_mode: !input fan_mode
+
+      - alias: Emergency hot-room cooling guardrail
+        conditions:
+          - condition: trigger
+            id: too_hot
+          - condition: or
+            conditions:
+              - condition: time
+                after: !input start_time
+              - condition: time
+                before: !input end_time
+          - condition: template
+            value_template: >-
+              {{ blocker_binary_sensor == '' or is_state(blocker_binary_sensor, 'off') }}
+        sequence:
+          - action: climate.set_hvac_mode
+            target:
+              entity_id: !input target_climate
+            data:
+              hvac_mode: cool
+          - action: climate.set_temperature
+            target:
+              entity_id: !input target_climate
+            data:
+              temperature: !input emergency_target_temperature
+          - action: climate.set_fan_mode
+            target:
+              entity_id: !input target_climate
+            data:
+              fan_mode: !input fan_mode
+
+      - alias: Restore the normal target after the hot guardrail
+        conditions:
+          - condition: trigger
+            id: hot_recovery
+          - condition: or
+            conditions:
+              - condition: time
+                after: !input start_time
+              - condition: time
+                before: !input end_time
+          - condition: numeric_state
+            entity_id: !input temperature_sensor
+            below: !input hot_recovery_temperature
+          - condition: template
+            value_template: >-
+              {{ blocker_binary_sensor == '' or is_state(blocker_binary_sensor, 'off') }}
+        sequence:
+          - action: climate.set_temperature
+            target:
+              entity_id: !input target_climate
+            data:
+              temperature: !input target_temperature
+          - action: climate.set_fan_mode
+            target:
+              entity_id: !input target_climate
+            data:
+              fan_mode: !input fan_mode
+
+mode: restart
