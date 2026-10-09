@@ -1,0 +1,190 @@
+blueprint:
+  name: Valve room temperature and window sync
+  description: >
+    Send a room temperature sensor to one or more Zigbee2MQTT TRV external
+    measured room sensor numbers (in hundredths of a degree Celsius).
+    Select valves in order: the first valve's heating setpoint is copied to
+    every other selected valve. Optionally follow a window contact with the
+    valves' external window-open switches. Every five minutes and on Home
+    Assistant startup, reconcile available readings and window state;
+    unavailable sensors never send a fake zero or clear the window flag.
+    Keep room-specific heating schedules separate.
+  domain: automation
+  author: ishioni
+  source_url: https://github.com/ishioni/homeassistant-blueprints/blob/master/climate/valve_room_temperature_and_window.yaml
+  homeassistant:
+    min_version: "2024.10.0"
+  input:
+    valves:
+      name: Valves
+      icon: mdi:radiator
+      input:
+        valve_climates:
+          name: Valve climate entities (in priority order)
+          description: Select the valves in this room. The first valve controls the heating setpoint; all other selected valves follow it. Reorder to change the primary valve.
+          selector:
+            entity:
+              domain: climate
+              multiple: true
+              reorder: true
+        external_temperature_numbers:
+          name: Valve external temperature inputs
+          description: Select each valve's external measured room sensor number entity. Values are sent in hundredths of a degree Celsius.
+          selector:
+            entity:
+              domain: number
+              multiple: true
+        external_window_switches:
+          name: Valve external window-open switches
+          description: Select each valve's external window-open switch; leave empty if no window contact is configured.
+          default: []
+          selector:
+            entity:
+              domain: switch
+              multiple: true
+    temperature_sensor:
+      name: Temperature sensor
+      icon: mdi:thermometer
+      input:
+        room_temperature:
+          name: Room temperature source
+          selector:
+            entity:
+              domain: sensor
+              device_class: temperature
+    window_sensor:
+      name: Window sensor
+      icon: mdi:window-open-variant
+      input:
+        window_contact:
+          name: Door or window contact
+          description: On means open. Leave blank if the room has no contact.
+          default: ""
+          selector:
+            entity:
+              filter:
+                - domain: binary_sensor
+                  device_class: door
+                - domain: binary_sensor
+                  device_class: window
+
+trigger_variables:
+  window_contact_trigger: !input window_contact
+
+variables:
+  room_temperature: !input room_temperature
+  valve_climates: !input valve_climates
+  primary_climate: "{{ valve_climates | first | default('') }}"
+  window_contact: !input window_contact
+  external_window_switches: !input external_window_switches
+
+triggers:
+  - trigger: state
+    entity_id: !input room_temperature
+    id: room_temperature_changed
+  - trigger: state
+    entity_id: !input valve_climates
+    attribute: temperature
+    id: setpoint_changed
+  - trigger: template
+    value_template: "{{ window_contact_trigger != '' and is_state(window_contact_trigger, 'on') }}"
+    id: window_opened
+  - trigger: template
+    value_template: "{{ window_contact_trigger != '' and is_state(window_contact_trigger, 'off') }}"
+    id: window_closed
+  - trigger: time_pattern
+    minutes: /5
+    id: reconcile
+  - trigger: homeassistant
+    event: start
+    id: reconcile
+
+actions:
+  - choose:
+      - conditions:
+          - condition: trigger
+            id:
+              - window_opened
+              - window_closed
+        sequence:
+          - if:
+              - condition: template
+                value_template: "{{ external_window_switches | length > 0 }}"
+            then:
+              - if:
+                  - "{{ is_state(window_contact, 'on') }}"
+                then:
+                  - action: switch.turn_on
+                    target:
+                      entity_id: "{{ external_window_switches }}"
+                else:
+                  - if:
+                      - "{{ is_state(window_contact, 'off') }}"
+                    then:
+                      - action: switch.turn_off
+                        target:
+                          entity_id: "{{ external_window_switches }}"
+      - conditions:
+          - condition: trigger
+            id: setpoint_changed
+        sequence:
+          - if:
+              - condition: template
+                value_template: "{{ valve_climates | length > 1 and is_number(state_attr(primary_climate, 'temperature')) }}"
+            then:
+              - repeat:
+                  for_each: "{{ valve_climates[1:] }}"
+                  sequence:
+                    - if:
+                        - "{{ state_attr(primary_climate, 'temperature') != state_attr(repeat.item, 'temperature') }}"
+                      then:
+                        - action: climate.set_temperature
+                          target:
+                            entity_id: "{{ repeat.item }}"
+                          data:
+                            temperature: "{{ state_attr(primary_climate, 'temperature') }}"
+    default:
+      - if:
+          - condition: template
+            value_template: "{{ is_number(states(room_temperature)) }}"
+        then:
+          - action: number.set_value
+            target:
+              entity_id: !input external_temperature_numbers
+            data:
+              value: "{{ (states(room_temperature) | float * 100) | round(0) | int }}"
+      - if:
+          - condition: template
+            value_template: "{{ window_contact != '' and external_window_switches | length > 0 }}"
+        then:
+          - if:
+              - "{{ is_state(window_contact, 'on') }}"
+            then:
+              - action: switch.turn_on
+                target:
+                  entity_id: "{{ external_window_switches }}"
+            else:
+              - if:
+                  - "{{ is_state(window_contact, 'off') }}"
+                then:
+                  - action: switch.turn_off
+                    target:
+                      entity_id: "{{ external_window_switches }}"
+      - if:
+          - condition: template
+            value_template: "{{ valve_climates | length > 1 and is_number(state_attr(primary_climate, 'temperature')) }}"
+        then:
+          - repeat:
+              for_each: "{{ valve_climates[1:] }}"
+              sequence:
+                - if:
+                    - "{{ state_attr(primary_climate, 'temperature') != state_attr(repeat.item, 'temperature') }}"
+                  then:
+                    - action: climate.set_temperature
+                      target:
+                        entity_id: "{{ repeat.item }}"
+                      data:
+                        temperature: "{{ state_attr(primary_climate, 'temperature') }}"
+
+mode: queued
+max: 10
