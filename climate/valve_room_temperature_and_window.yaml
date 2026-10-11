@@ -29,7 +29,7 @@ blueprint:
               reorder: true
         external_temperature_numbers:
           name: Valve external temperature inputs
-          description: Select each valve's external measured room sensor number entity. Values are sent in hundredths of a degree Celsius.
+          description: Select each valve's external measured room sensor number entity (the valve's reported external input, not its built-in sensor). Values are sent in hundredths of a degree Celsius.
           selector:
             entity:
               domain: number
@@ -151,7 +151,7 @@ actions:
                  and -8000 < (states(room_temperature) | float * 100) | round(0) | int <= 3500 }}
         then:
           - variables:
-              measured_value: "{{ (states(room_temperature) | float * 100) | round(0) | int }}"
+              room_temperature_hundredths: "{{ (states(room_temperature) | float * 100) | round(0) | int }}"
           - choose:
               - conditions:
                   - condition: trigger
@@ -160,23 +160,26 @@ actions:
                   - repeat:
                       for_each: !input external_temperature_numbers
                       sequence:
+                        - variables:
+                            valve_reported_external_hundredths: "{{ states(repeat.item) }}"
                         - if:
                             - condition: template
                               value_template: >-
-                                {{ is_number(states(repeat.item))
-                                   and ((measured_value | int) - (states(repeat.item) | float)) | abs >= 10 }}
+                                {{ is_number(valve_reported_external_hundredths)
+                                   and ((room_temperature_hundredths | int)
+                                        - (valve_reported_external_hundredths | float)) | abs >= 10 }}
                           then:
                             - action: number.set_value
                               target:
                                 entity_id: "{{ repeat.item }}"
                               data:
-                                value: "{{ measured_value }}"
+                                value: "{{ room_temperature_hundredths }}"
             default:
               - action: number.set_value
                 target:
                   entity_id: !input external_temperature_numbers
                 data:
-                  value: "{{ measured_value }}"
+                  value: "{{ room_temperature_hundredths }}"
       - if:
           - condition: template
             value_template: "{{ window_contact != '' and external_window_switches | length > 0 }}"
