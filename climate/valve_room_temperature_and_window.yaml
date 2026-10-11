@@ -146,13 +146,37 @@ actions:
     default:
       - if:
           - condition: template
-            value_template: "{{ is_number(states(room_temperature)) }}"
+            value_template: >-
+              {{ is_number(states(room_temperature))
+                 and -8000 < (states(room_temperature) | float * 100) | round(0) | int <= 3500 }}
         then:
-          - action: number.set_value
-            target:
-              entity_id: !input external_temperature_numbers
-            data:
-              value: "{{ (states(room_temperature) | float * 100) | round(0) | int }}"
+          - variables:
+              measured_value: "{{ (states(room_temperature) | float * 100) | round(0) | int }}"
+          - choose:
+              - conditions:
+                  - condition: trigger
+                    id: room_temperature_changed
+                sequence:
+                  - repeat:
+                      for_each: !input external_temperature_numbers
+                      sequence:
+                        - if:
+                            - condition: template
+                              value_template: >-
+                                {{ is_number(states(repeat.item))
+                                   and ((measured_value | int) - (states(repeat.item) | float)) | abs >= 10 }}
+                          then:
+                            - action: number.set_value
+                              target:
+                                entity_id: "{{ repeat.item }}"
+                              data:
+                                value: "{{ measured_value }}"
+            default:
+              - action: number.set_value
+                target:
+                  entity_id: !input external_temperature_numbers
+                data:
+                  value: "{{ measured_value }}"
       - if:
           - condition: template
             value_template: "{{ window_contact != '' and external_window_switches | length > 0 }}"
